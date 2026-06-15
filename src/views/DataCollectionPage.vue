@@ -1,5 +1,5 @@
 <script setup>
-import { computed, ref } from 'vue'
+import { computed, onMounted, ref } from 'vue'
 import ActionButton from '../components/common/ActionButton.vue'
 import BaseModal from '../components/common/BaseModal.vue'
 import BaseTable from '../components/common/BaseTable.vue'
@@ -14,6 +14,7 @@ const showActionModal = ref(false)
 const statusText = ref('파일을 선택하면 SQL 저장 전에 반려 항목과 담당자 확인 항목을 먼저 검사합니다.')
 const actionTitle = ref('')
 const actionMessage = ref('')
+const isLoading = ref(false)
 const tempStorageKey = 'vue-electron-upload-validation-draft'
 
 const templates = [
@@ -35,25 +36,7 @@ const templates = [
   }
 ]
 
-const blockingTypes = ['거래처 누락', '거래처 코드 누락', '품목코드 누락', '금액 불일치']
-const reviewTypes = ['단가 불일치', '중복 의심', '기타 확인']
-const counts = {
-  '거래처 누락': 1,
-  '거래처 코드 누락': 2,
-  '품목코드 누락': 3,
-  '금액 불일치': 1,
-  '단가 불일치': 4,
-  '중복 의심': 2,
-  '기타 확인': 5
-}
-
-const detailRows = [
-  { id: 1, rowNumber: 14, type: '거래처 누락', action: '반려', severity: 'red', message: '거래처명이 비어 있어 기준정보 매칭을 할 수 없습니다.' },
-  { id: 2, rowNumber: 37, type: '품목코드 누락', action: '반려', severity: 'red', message: '품목명은 있으나 품목코드가 누락되었습니다.' },
-  { id: 3, rowNumber: 52, type: '단가 불일치', action: '재확인', severity: 'amber', message: '기준 단가와 업로드 단가가 8.4% 차이납니다.' },
-  { id: 4, rowNumber: 88, type: '중복 의심', action: '재확인', severity: 'amber', message: '동일 거래처/품목/금액 조합이 이미 존재합니다.' },
-  { id: 5, rowNumber: 103, type: '금액 불일치', action: '반려', severity: 'red', message: '수량 x 단가 계산 금액과 업로드 금액이 다릅니다.' }
-]
+const detailRows = ref([])
 
 const issueColumns = [
   { key: 'rowNumber', label: '행', cellClass: 'fw-semibold' },
@@ -62,17 +45,44 @@ const issueColumns = [
   { key: 'message', label: '내용' }
 ]
 
-const issueTypes = computed(() => ['전체', ...blockingTypes, ...reviewTypes])
+const blockingTypes = computed(() => [...new Set(detailRows.value.filter((row) => row.action === '반려').map((row) => row.type))])
+const reviewTypes = computed(() => [...new Set(detailRows.value.filter((row) => row.action === '재확인').map((row) => row.type))])
+const issueTypes = computed(() => ['전체', ...blockingTypes.value, ...reviewTypes.value])
+const counts = computed(() => detailRows.value.reduce((acc, row) => {
+  acc[row.type] = (acc[row.type] || 0) + 1
+  return acc
+}, {}))
 const filteredIssues = computed(() => (
   selectedType.value === '전체'
-    ? detailRows
-    : detailRows.filter((row) => row.type === selectedType.value)
+    ? detailRows.value
+    : detailRows.value.filter((row) => row.type === selectedType.value)
 ))
-const blockerCount = computed(() => detailRows.filter((row) => row.action === '반려').length)
-const reviewCount = computed(() => detailRows.filter((row) => row.action === '재확인').length)
+const blockerCount = computed(() => detailRows.value.filter((row) => row.action === '반려').length)
+const reviewCount = computed(() => detailRows.value.filter((row) => row.action === '재확인').length)
 
-function loadSample() {
-  statusText.value = `sample_sales_1200.xlsx 샘플을 검증했습니다. 반려 ${blockerCount.value}건, 재확인 ${reviewCount.value}건이 있습니다.`
+function getDb() {
+  return window.electronAPI?.db
+}
+
+async function loadSample() {
+  const db = getDb()
+
+  if (!db) {
+    notify('Electron DB 연결 필요', '브라우저 미리보기에서는 PostgreSQL IPC를 사용할 수 없습니다. Electron 앱에서 실행해주세요.')
+    return
+  }
+
+  isLoading.value = true
+
+  try {
+    detailRows.value = await db.getValidationIssues()
+    statusText.value = `PostgreSQL에서 검증 이슈를 불러왔습니다. 반려 ${blockerCount.value}건, 재확인 ${reviewCount.value}건이 있습니다.`
+  } catch (error) {
+    detailRows.value = []
+    notify('PostgreSQL 연결 실패', error.message || '로컬 PostgreSQL 연결을 확인해주세요.')
+  } finally {
+    isLoading.value = false
+  }
 }
 
 function openIssue(type) {
@@ -104,7 +114,7 @@ function saveDraft() {
     savedAt: new Date().toISOString(),
     selectedType: selectedType.value,
     statusText: statusText.value,
-    issueCount: detailRows.length
+    issueCount: detailRows.value.length
   }
 
   localStorage.setItem(tempStorageKey, JSON.stringify(payload))
@@ -133,7 +143,7 @@ function downloadEditedRows() {
 }
 
 function downloadIssueRows() {
-  notify('항목별 엑셀 다운로드', `${activeIssueType.value} 항목 ${counts[activeIssueType.value] || 0}건을 엑셀로 내려받을 수 있도록 준비했습니다.`)
+  notify('항목별 엑셀 다운로드', `${activeIssueType.value} 항목 ${counts.value[activeIssueType.value] || 0}건을 엑셀로 내려받을 수 있도록 준비했습니다.`)
 }
 
 function revalidateIssueRows() {
@@ -144,6 +154,8 @@ function completeIssueReview() {
   showIssueModal.value = false
   notify('검토 완료', `${activeIssueType.value} 항목 검토를 완료했습니다.`)
 }
+
+onMounted(loadSample)
 </script>
 
 <template>
@@ -190,7 +202,7 @@ function completeIssueReview() {
         <div class="min-w-0">
           <p class="label-text text-uppercase">Pre-insert validation</p>
           <h3 class="panel-title mb-1">sample_sales_1200.xlsx</h3>
-          <p class="body-text mb-0">{{ statusText }}</p>
+          <p class="body-text mb-0">{{ isLoading ? 'PostgreSQL에서 검증 이슈를 불러오는 중입니다.' : statusText }}</p>
         </div>
         <div class="table-action-group">
           <ActionButton type="add" @click="uploadFile">파일 업로드</ActionButton>

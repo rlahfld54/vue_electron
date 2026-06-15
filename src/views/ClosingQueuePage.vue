@@ -1,5 +1,5 @@
 <script setup>
-import { computed, ref } from 'vue'
+import { computed, onMounted, ref } from 'vue'
 import ActionButton from '../components/common/ActionButton.vue'
 import BaseModal from '../components/common/BaseModal.vue'
 import BaseTable from '../components/common/BaseTable.vue'
@@ -18,6 +18,7 @@ const actionTitle = ref('')
 const actionMessage = ref('')
 const mailDraftTitle = ref('')
 const mailDraftBody = ref('')
+const isLoading = ref(false)
 
 const checks = [
   ['Gmail 주소', 'gmail.com 주소 형식 확인'],
@@ -67,128 +68,68 @@ const targetColumns = [
   { key: 'amount', label: '금액', headerClass: 'text-end', cellClass: 'text-end' }
 ]
 
-const companies = [
-  {
-    id: 1,
-    name: '모블상사',
-    owner: '강소영 대리',
-    due: '10일',
-    type: '금액 확인 재연락',
-    tone: 'amber',
-    lastContact: '2026-06-08 10:30 / 2회',
-    amount: '19,650,000원',
-    channel: '메일 발송',
-    email: 'admin@moble.example',
-    xlsx: '모블상사_10일_마감요청.xlsx',
-    pdf: '모블상사_10일_마감요청.pdf',
-    xlsxSize: '7 KB',
-    pdfSize: '27 KB'
-  },
-  {
-    id: 2,
-    name: '그린물류',
-    owner: '서가온 팀장',
-    due: '25일',
-    type: '세금계산서 차이 확인',
-    tone: 'red',
-    lastContact: '2026-06-10 14:20 / 1회',
-    amount: '43,180,000원',
-    channel: '메일 발송',
-    email: 'tax@greenlog.example',
-    xlsx: '그린물류_25일_마감요청.xlsx',
-    pdf: '그린물류_25일_마감요청.pdf',
-    xlsxSize: '7 KB',
-    pdfSize: '26 KB'
-  },
-  {
-    id: 3,
-    name: '청담리테일',
-    owner: '윤나라 과장',
-    due: '25일',
-    type: '금액 확인 재연락',
-    tone: 'amber',
-    lastContact: '2026-06-09 09:10 / 2회',
-    amount: '12,400,000원',
-    channel: '카톡 문구 복사',
-    email: 'closing@cheongdam.example',
-    xlsx: '청담리테일_25일_마감요청.xlsx',
-    pdf: '청담리테일_25일_마감요청.pdf',
-    xlsxSize: '7 KB',
-    pdfSize: '27 KB'
-  },
-  {
-    id: 4,
-    name: '서울컴퍼니',
-    owner: '문하린 차장',
-    due: '30일',
-    type: '마감장 최초 발송',
-    tone: 'blue',
-    lastContact: '없음',
-    amount: '35,860,000원',
-    channel: '메일 발송',
-    email: 'finance@seoulcp.example',
-    xlsx: '서울컴퍼니_30일_마감요청.xlsx',
-    pdf: '서울컴퍼니_30일_마감요청.pdf',
-    xlsxSize: '7 KB',
-    pdfSize: '26 KB'
-  },
-  {
-    id: 5,
-    name: '다원문구',
-    owner: '최유진 매니저',
-    due: '10일',
-    type: '세금계산서 차이 확인',
-    tone: 'red',
-    lastContact: '2026-06-11 11:00 / 1회',
-    amount: '8,240,000원',
-    channel: '메일 발송',
-    email: 'purchase@dawon.example',
-    xlsx: '다원문구_10일_마감요청.xlsx',
-    pdf: '다원문구_10일_마감요청.pdf',
-    xlsxSize: '7 KB',
-    pdfSize: '26 KB'
-  },
-  {
-    id: 6,
-    name: '코리아비즈',
-    owner: '이현우 팀장',
-    due: '25일',
-    type: '금액 확인 재연락',
-    tone: 'amber',
-    lastContact: '2026-06-07 16:40 / 3회',
-    amount: '28,900,000원',
-    channel: '카톡 문구 복사',
-    email: 'account@koreabiz.example',
-    xlsx: '코리아비즈_25일_마감요청.xlsx',
-    pdf: '코리아비즈_25일_마감요청.pdf',
-    xlsxSize: '7 KB',
-    pdfSize: '28 KB'
-  }
-]
+const companies = ref([])
 
-const selectedCompanyIds = ref(companies.map((company) => company.id))
-const selectedCompanies = computed(() => companies.filter((company) => selectedCompanyIds.value.includes(company.id)))
+const selectedCompanyIds = ref([])
+const selectedCompanies = computed(() => companies.value.filter((company) => selectedCompanyIds.value.includes(company.id)))
 
 const summaryCards = computed(() => [
   { label: '선택 업체', value: `${selectedCompanyIds.value.length}개` },
-  { label: '이메일', value: `${companies.filter((company) => company.channel === '메일 발송').length}개` },
-  { label: '카톡 복사', value: `${companies.filter((company) => company.channel === '카톡 문구 복사').length}개` },
+  { label: '이메일', value: `${companies.value.filter((company) => company.channel === '메일 발송').length}개` },
+  { label: '카톡 복사', value: `${companies.value.filter((company) => company.channel === '카톡 문구 복사').length}개` },
   { label: '첨부 상태', value: '생성 완료' }
 ])
 
-const typeSummary = [
-  { label: '금액 확인 재연락', value: '3개', tone: 'amber' },
-  { label: '세금계산서 차이 확인', value: '2개', tone: 'red' },
-  { label: '마감장 최초 발송', value: '1개', tone: 'blue' }
-]
+const typeSummary = computed(() => {
+  const summary = new Map()
 
-const selectedCompany = computed(() => selectedMail.value || companies[0])
+  companies.value.forEach((company) => {
+    const current = summary.get(company.type) || { label: company.type, count: 0, tone: company.tone }
+    current.count += 1
+    summary.set(company.type, current)
+  })
+
+  return [...summary.values()].map((item) => ({
+    label: item.label,
+    value: `${item.count}개`,
+    tone: item.tone
+  }))
+})
+
+const selectedCompany = computed(() => selectedMail.value || companies.value[0] || {})
+
+function getDb() {
+  return window.electronAPI?.db
+}
 
 function notify(title, message) {
   actionTitle.value = title
   actionMessage.value = message
   queueNotice.value = message
   showActionModal.value = true
+}
+
+async function loadClosingQueue() {
+  const db = getDb()
+
+  if (!db) {
+    notify('Electron DB 연결 필요', '브라우저 미리보기에서는 PostgreSQL IPC를 사용할 수 없습니다. Electron 앱에서 실행해주세요.')
+    return
+  }
+
+  isLoading.value = true
+
+  try {
+    companies.value = await db.getClosingQueue()
+    selectedCompanyIds.value = companies.value.map((company) => company.id)
+    queueNotice.value = `PostgreSQL에서 발송 큐 ${companies.value.length}개 업체를 불러왔습니다.`
+  } catch (error) {
+    companies.value = []
+    selectedCompanyIds.value = []
+    notify('PostgreSQL 연결 실패', error.message || '로컬 PostgreSQL 연결을 확인해주세요.')
+  } finally {
+    isLoading.value = false
+  }
 }
 
 function setStep(stepId) {
@@ -226,7 +167,7 @@ function runPreflight() {
 }
 
 function editGlobalMailTemplate() {
-  openMailModal(selectedCompanies.value[0] || companies[0])
+  openMailModal(selectedCompanies.value[0] || companies.value[0])
 }
 
 function generateAttachments() {
@@ -244,7 +185,7 @@ function saveAttachment(company, fileType) {
 
 function recheckPreview() {
   currentStep.value = 4
-  notify('문구 재점검 완료', `메일 대상 ${companies.filter((company) => company.channel === '메일 발송').length}개와 카톡 복사 대상 ${companies.filter((company) => company.channel === '카톡 문구 복사').length}개를 다시 점검했습니다.`)
+  notify('문구 재점검 완료', `메일 대상 ${companies.value.filter((company) => company.channel === '메일 발송').length}개와 카톡 복사 대상 ${companies.value.filter((company) => company.channel === '카톡 문구 복사').length}개를 다시 점검했습니다.`)
 }
 
 function createDrafts() {
@@ -266,6 +207,8 @@ function closeMailModal() {
   showMailModal.value = false
   notify('메일 문구 반영', `${selectedCompany.value.name} 메일 문구 수정 내용을 화면 검토본에 반영했습니다.`)
 }
+
+onMounted(loadClosingQueue)
 </script>
 
 <template>

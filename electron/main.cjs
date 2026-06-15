@@ -1,7 +1,17 @@
-const { app, BrowserWindow } = require('electron')
+const { app, BrowserWindow, ipcMain } = require('electron')
 const path = require('path')
+const localDb = require('./localDb.cjs')
 
 const isDev = !app.isPackaged
+
+function registerDbHandlers() {
+  ipcMain.handle('db:get-raw-rows', () => localDb.getRawRows())
+  ipcMain.handle('db:add-sample-row', () => localDb.addSampleRow())
+  ipcMain.handle('db:run-validation', () => localDb.runValidation())
+  ipcMain.handle('db:save-sql-snapshot', () => localDb.saveSqlSnapshot())
+  ipcMain.handle('db:get-validation-issues', () => localDb.getValidationIssues())
+  ipcMain.handle('db:get-closing-queue', () => localDb.getClosingQueue())
+}
 
 function createWindow() {
   const mainWindow = new BrowserWindow({
@@ -27,6 +37,7 @@ function createWindow() {
 }
 
 app.whenReady().then(() => {
+  registerDbHandlers()
   createWindow()
 
   app.on('activate', () => {
@@ -40,4 +51,8 @@ app.on('window-all-closed', () => {
   if (process.platform !== 'darwin') {
     app.quit()
   }
+})
+
+app.on('before-quit', () => {
+  localDb.closePool()
 })
