@@ -9,7 +9,9 @@
     "electron:dev": "concurrently -k \"npm run dev\" \"wait-on tcp:4358 && electron .\"",
     "build": "vite build",
     "preview": "vite preview",
-    "start": "electron ."
+    "start": "electron .",
+    "db:setup": "powershell -ExecutionPolicy Bypass -File db/setup-local-db.ps1",
+    "db:reset": "powershell -ExecutionPolicy Bypass -File db/setup-local-db.ps1 -Reset"
   },
   "dependencies": {
     "@vitejs/plugin-vue": "^5.2.4",
