@@ -10,8 +10,8 @@
     "build": "vite build",
     "preview": "vite preview",
     "start": "electron .",
-    "db:setup": "powershell -ExecutionPolicy Bypass -File db/setup-local-db.ps1",
-    "db:reset": "powershell -ExecutionPolicy Bypass -File db/setup-local-db.ps1 -Reset"
+    "db:setup": "node db/setup-local-db.cjs",
+    "db:reset": "node db/setup-local-db.cjs --reset"
   },
   "dependencies": {
     "@vitejs/plugin-vue": "^5.2.4",

@@ -30,7 +30,6 @@ function createWindow() {
 
   if (isDev) {
     mainWindow.loadURL('http://localhost:4358')
-    mainWindow.webContents.openDevTools({ mode: 'detach' })
     return
   }
 

@@ -278,3 +278,110 @@ WHERE closing_batches.batch_no = 'CL-2026-06-001'
     WHERE sync_outbox.entity_name = 'closing_batches'
       AND sync_outbox.entity_id = closing_batches.id
   );
+
+INSERT INTO sales_closing_rows (
+  batch_id,
+  customer_id,
+  product_id,
+  row_number,
+  transaction_date,
+  customer_name,
+  customer_code,
+  product_name,
+  product_code,
+  quantity,
+  unit_price,
+  amount,
+  tax_invoice_amount,
+  owner_name,
+  department_name,
+  evidence_number,
+  tax_invoice_number,
+  approval_status,
+  closing_day,
+  row_status,
+  memo
+)
+SELECT b.id, c.id, p.id, row_data.row_number, row_data.transaction_date::date, c.name, c.code, p.name, p.code,
+  row_data.quantity, row_data.unit_price, row_data.amount, row_data.tax_invoice_amount,
+  row_data.owner_name, row_data.department_name, row_data.evidence_number, row_data.tax_invoice_number,
+  row_data.approval_status, c.closing_day, row_data.row_status, row_data.memo
+FROM closing_batches b
+JOIN (
+  VALUES
+    ('C-1024', 'P-A100', 14, '2026-05-31', 12::numeric, 1637500::numeric, 19650000::numeric, 19650000::numeric, '박지훈', '매출관리팀', 'EV-202606-001', 'TX-202606-001', '확인', 'REJECTED', '금액 확인 재연락'),
+    ('C-2041', 'P-S200', 37, '2026-05-31', 20::numeric, 2159000::numeric, 43180000::numeric, 42800000::numeric, '박지훈', '매출관리팀', 'EV-202606-002', 'TX-202606-002', '보류', 'REVIEW', '세금계산서 차이 확인'),
+    ('C-3077', 'P-O400', 52, '2026-05-31', 10::numeric, 1240000::numeric, 12400000::numeric, 12400000::numeric, '황주은', '영업지원팀', 'EV-202606-003', 'TX-202606-003', '승인', 'READY', '카톡 문구 복사'),
+    ('C-4112', 'P-M300', 88, '2026-05-31', 8::numeric, 4482500::numeric, 35860000::numeric, 35860000::numeric, '황주은', '영업지원팀', 'EV-202606-004', 'TX-202606-004', '승인', 'READY', '마감장 최초 발송'),
+    ('C-5088', 'P-X500', 103, '2026-05-31', 6::numeric, 1373333::numeric, 8240000::numeric, 8240000::numeric, '박지훈', '매출관리팀', 'EV-202606-005', 'TX-202606-005', '확인', 'REVIEW', '추가 업로드 품목 확인'),
+    ('C-6093', 'P-B600', 117, '2026-05-31', 10::numeric, 2890000::numeric, 28900000::numeric, 28900000::numeric, '황주은', '영업지원팀', 'EV-202606-006', 'TX-202606-006', '승인', 'READY', '카톡 문구 복사')
+) AS row_data(customer_code, product_code, row_number, transaction_date, quantity, unit_price, amount, tax_invoice_amount, owner_name, department_name, evidence_number, tax_invoice_number, approval_status, row_status, memo)
+  ON true
+JOIN customers c ON c.code = row_data.customer_code
+JOIN products p ON p.code = row_data.product_code
+WHERE b.batch_no = 'CL-2026-06-001'
+  AND NOT EXISTS (
+    SELECT 1
+    FROM sales_closing_rows existing
+    WHERE existing.batch_id = b.id
+      AND existing.row_number = row_data.row_number
+  );
+
+INSERT INTO validation_issues (row_id, issue_type, severity, action_type, message)
+SELECT r.id, issue_data.issue_type, issue_data.severity, issue_data.action_type, issue_data.message
+FROM sales_closing_rows r
+JOIN closing_batches b ON b.id = r.batch_id
+JOIN (
+  VALUES
+    (14, '금액 확인 재연락', 'AMBER', 'REVIEW', '이전 전달 마감 금액 확인이 아직 완료되지 않았습니다.'),
+    (37, '세금계산서 차이 확인', 'RED', 'REJECT', '마감 확정 금액과 세금계산서 금액 차이가 확인되었습니다.'),
+    (103, '품목코드 누락', 'AMBER', 'REVIEW', '추가 업로드 품목의 기준정보 매칭 확인이 필요합니다.')
+) AS issue_data(row_number, issue_type, severity, action_type, message)
+  ON issue_data.row_number = r.row_number
+WHERE b.batch_no = 'CL-2026-06-001'
+  AND NOT EXISTS (
+    SELECT 1
+    FROM validation_issues existing
+    WHERE existing.row_id = r.id
+      AND existing.issue_type = issue_data.issue_type
+  );
+
+INSERT INTO mail_queue (batch_id, customer_id, recipient_email, subject, body, queue_status, send_channel)
+SELECT
+  b.id,
+  c.id,
+  c.manager_email,
+  c.name || ' ' || r.memo || ' 의 건',
+  c.name || ' 관리팀 ' || c.manager_name || E'님\n안녕하세요. 총무팀 황주은 사원입니다.\n마감일: ' || c.closing_day || E'일\n마감 금액: ' || to_char(r.amount, 'FM999,999,999') || E'원\n확인 유형: ' || r.memo || E'\n감사합니다.',
+  'READY',
+  c.default_channel
+FROM sales_closing_rows r
+JOIN closing_batches b ON b.id = r.batch_id
+JOIN customers c ON c.id = r.customer_id
+WHERE b.batch_no = 'CL-2026-06-001'
+  AND NOT EXISTS (
+    SELECT 1
+    FROM mail_queue existing
+    WHERE existing.batch_id = b.id
+      AND existing.customer_id = c.id
+  );
+
+INSERT INTO mail_attachments (mail_queue_id, file_type, file_name, file_path, file_size_bytes)
+SELECT mq.id, attachment_data.file_type, c.name || '_' || c.closing_day || '일_' || attachment_data.suffix,
+  attachment_data.file_path, attachment_data.file_size_bytes
+FROM mail_queue mq
+JOIN customers c ON c.id = mq.customer_id
+JOIN closing_batches b ON b.id = mq.batch_id
+JOIN (
+  VALUES
+    ('XLSX', '마감요청.xlsx', 'Exports/ClosingAttachments', 7168::bigint),
+    ('PDF', '마감요청.pdf', 'Exports/ClosingAttachments', 27648::bigint)
+) AS attachment_data(file_type, suffix, file_path, file_size_bytes)
+  ON true
+WHERE b.batch_no = 'CL-2026-06-001'
+  AND NOT EXISTS (
+    SELECT 1
+    FROM mail_attachments existing
+    WHERE existing.mail_queue_id = mq.id
+      AND existing.file_type = attachment_data.file_type
+  );
