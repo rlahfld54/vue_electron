@@ -6,6 +6,8 @@ import BaseTable from '../components/common/BaseTable.vue'
 import PageLayout from '../components/common/PageLayout.vue'
 import SectionCard from '../components/common/SectionCard.vue'
 import StatusBadge from '../components/common/StatusBadge.vue'
+import { excelUploadTemplates } from '../data/excelUploadTemplates'
+import { exportAllUploadTemplatesToXlsx, exportUploadTemplateToXlsx } from '../utils/spreadsheetExport'
 
 const selectedType = ref('전체')
 const activeIssueType = ref('')
@@ -16,25 +18,7 @@ const actionTitle = ref('')
 const actionMessage = ref('')
 const isLoading = ref(false)
 const tempStorageKey = 'vue-electron-upload-validation-draft'
-
-const templates = [
-  {
-    id: 'sales-closing-source',
-    targetMenu: '마감 자료',
-    title: '매출 마감 원본',
-    description: '거래처별 매출, 품목, 수량, 단가, 금액을 업로드하기 위한 표준 양식입니다.',
-    requiredColumns: ['거래처명', '품목명', '수량', '단가', '금액', '마감일'],
-    optionalColumns: ['거래처코드', '품목코드', '비고']
-  },
-  {
-    id: 'sales-closing-compare',
-    targetMenu: '매출 마감 비교',
-    title: '마감 비교 기준',
-    description: '전월 데이터, 세금계산서 금액, 거래처 확인 상태를 비교하기 위한 검증 양식입니다.',
-    requiredColumns: ['거래처명', '마감금액', '세금계산서금액', '확인상태'],
-    optionalColumns: ['담당자', '회신일', '차이사유']
-  }
-]
+const templates = ref(excelUploadTemplates)
 
 const detailRows = ref([])
 
@@ -85,6 +69,21 @@ async function loadSample() {
   }
 }
 
+async function loadTemplates() {
+  const db = getDb()
+
+  if (!db) return
+
+  try {
+    const dbTemplates = await db.getUploadTemplates()
+    if (dbTemplates?.length) {
+      templates.value = dbTemplates
+    }
+  } catch {
+    templates.value = excelUploadTemplates
+  }
+}
+
 function openIssue(type) {
   activeIssueType.value = type
   showIssueModal.value = true
@@ -97,12 +96,22 @@ function notify(title, message) {
   statusText.value = message
 }
 
-function downloadTemplate(template) {
-  notify('양식 다운로드 준비', `${template.title} 양식을 내려받을 수 있도록 준비했습니다.`)
+async function downloadTemplate(template) {
+  try {
+    const result = await exportUploadTemplateToXlsx(template)
+    notify('양식 다운로드 완료', `${result.fileName} 파일을 생성했습니다.`)
+  } catch (error) {
+    notify('양식 다운로드 실패', error.message || '엑셀 양식 생성 중 오류가 발생했습니다.')
+  }
 }
 
-function downloadAllTemplates() {
-  notify('표준 양식 묶음 준비', '매출 마감 원본과 마감 비교 기준 양식 2개를 한 번에 받을 수 있도록 준비했습니다.')
+async function downloadAllTemplates() {
+  try {
+    const result = await exportAllUploadTemplatesToXlsx(templates.value)
+    notify('표준 양식 묶음 완료', `${result.fileName} 파일을 생성했습니다.`)
+  } catch (error) {
+    notify('표준 양식 묶음 실패', error.message || '엑셀 양식 생성 중 오류가 발생했습니다.')
+  }
 }
 
 function uploadFile() {
@@ -155,7 +164,10 @@ function completeIssueReview() {
   notify('검토 완료', `${activeIssueType.value} 항목 검토를 완료했습니다.`)
 }
 
-onMounted(loadSample)
+onMounted(() => {
+  loadTemplates()
+  loadSample()
+})
 </script>
 
 <template>

@@ -26,6 +26,12 @@ function plainMoney(value) {
   return Number(value || 0).toLocaleString('ko-KR')
 }
 
+function dateText(value) {
+  if (!value) return ''
+  if (value instanceof Date) return value.toISOString().slice(0, 10)
+  return String(value).slice(0, 10)
+}
+
 function statusLabel(status) {
   const labels = {
     REJECTED: '반려',
@@ -69,11 +75,19 @@ async function getRawRows() {
     SELECT
       r.id,
       r.row_number,
+      r.transaction_date,
       r.customer_name,
+      r.customer_code,
       r.product_name,
+      r.product_code,
       r.quantity,
       r.unit_price,
       r.amount,
+      r.owner_name,
+      r.department_name,
+      r.evidence_number,
+      r.tax_invoice_number,
+      r.approval_status,
       r.row_status
     FROM sales_closing_rows r
     JOIN closing_batches b ON b.id = r.batch_id
@@ -84,14 +98,70 @@ async function getRawRows() {
   return rows.map((row) => ({
     id: row.id,
     rowNumber: row.row_number,
+    transactionDate: dateText(row.transaction_date),
     customer: row.customer_name,
+    customerCode: row.customer_code,
     product: row.product_name,
+    productCode: row.product_code,
     quantity: Number(row.quantity),
     unitPrice: plainMoney(row.unit_price),
     amount: plainMoney(row.amount),
+    owner: row.owner_name,
+    department: row.department_name,
+    evidenceNumber: row.evidence_number,
+    taxInvoiceNumber: row.tax_invoice_number,
+    approvalStatus: row.approval_status,
     status: statusLabel(row.row_status),
     tone: statusTone(row.row_status)
   }))
+}
+
+async function getUploadTemplates() {
+  const rows = await runQuery(`
+    SELECT
+      t.id,
+      t.title,
+      t.description,
+      t.file_name,
+      t.target_menu,
+      t.rules,
+      t.sample_rows,
+      c.column_name,
+      c.column_role,
+      c.column_order
+    FROM excel_upload_templates t
+    LEFT JOIN excel_upload_template_columns c ON c.template_id = t.id
+    WHERE t.status = 'ACTIVE'
+    ORDER BY t.id, c.column_order ASC
+  `)
+
+  const templates = new Map()
+
+  rows.forEach((row) => {
+    if (!templates.has(row.id)) {
+      templates.set(row.id, {
+        id: row.id,
+        title: row.title,
+        description: row.description,
+        fileName: row.file_name,
+        targetMenu: row.target_menu,
+        requiredColumns: [],
+        optionalColumns: [],
+        rules: Array.isArray(row.rules) ? row.rules : [],
+        sampleRows: Array.isArray(row.sample_rows) ? row.sample_rows : []
+      })
+    }
+
+    const template = templates.get(row.id)
+    if (row.column_name && row.column_role === 'REQUIRED') {
+      template.requiredColumns.push(row.column_name)
+    }
+    if (row.column_name && row.column_role === 'OPTIONAL') {
+      template.optionalColumns.push(row.column_name)
+    }
+  })
+
+  return [...templates.values()]
 }
 
 async function addSampleRow() {
@@ -100,22 +170,30 @@ async function addSampleRow() {
       SELECT id FROM closing_batches WHERE batch_no = $1
     ),
     customer AS (
-      SELECT id, name, closing_day FROM customers WHERE code = $2
+      SELECT id, code, name, closing_day FROM customers WHERE code = $2
     ),
     product AS (
-      SELECT id, name, unit_price FROM products WHERE code = $3
+      SELECT id, code, name, unit_price FROM products WHERE code = $3
     )
     INSERT INTO sales_closing_rows (
       batch_id,
       customer_id,
       product_id,
       row_number,
+      transaction_date,
       customer_name,
+      customer_code,
       product_name,
+      product_code,
       quantity,
       unit_price,
       amount,
       tax_invoice_amount,
+      owner_name,
+      department_name,
+      evidence_number,
+      tax_invoice_number,
+      approval_status,
       closing_day,
       row_status,
       memo
@@ -125,12 +203,20 @@ async function addSampleRow() {
       customer.id,
       product.id,
       COALESCE((SELECT MAX(row_number) + 1 FROM sales_closing_rows WHERE batch_id = batch.id), 1),
+      CURRENT_DATE,
       customer.name,
+      customer.code,
       product.name,
+      product.code,
       6,
       product.unit_price,
       8240000,
       8240000,
+      '박지훈',
+      '매출관리팀',
+      'EV-202606-ADD',
+      'TX-202606-ADD',
+      '확인',
       customer.closing_day,
       'REVIEW',
       '추가 업로드 품목 확인'
@@ -273,6 +359,7 @@ module.exports = {
   closePool,
   getClosingQueue,
   getRawRows,
+  getUploadTemplates,
   getValidationIssues,
   runValidation,
   saveSqlSnapshot

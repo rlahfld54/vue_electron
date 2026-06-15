@@ -8,6 +8,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
     runValidation: () => ipcRenderer.invoke('db:run-validation'),
     saveSqlSnapshot: () => ipcRenderer.invoke('db:save-sql-snapshot'),
     getValidationIssues: () => ipcRenderer.invoke('db:get-validation-issues'),
-    getClosingQueue: () => ipcRenderer.invoke('db:get-closing-queue')
+    getClosingQueue: () => ipcRenderer.invoke('db:get-closing-queue'),
+    getUploadTemplates: () => ipcRenderer.invoke('db:get-upload-templates')
   }
 })

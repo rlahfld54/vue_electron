@@ -18,11 +18,19 @@ const isLoading = ref(false)
 const rows = ref([])
 
 const columns = [
+  { key: 'transactionDate', label: '거래일' },
   { key: 'customer', label: '거래처', cellClass: 'fw-semibold' },
+  { key: 'customerCode', label: '거래처코드' },
   { key: 'product', label: '품목' },
+  { key: 'productCode', label: '품목코드' },
   { key: 'quantity', label: '수량' },
   { key: 'unitPrice', label: '단가', headerClass: 'text-end', cellClass: 'text-end' },
   { key: 'amount', label: '금액', headerClass: 'text-end', cellClass: 'text-end' },
+  { key: 'owner', label: '담당자' },
+  { key: 'department', label: '부서' },
+  { key: 'evidenceNumber', label: '증빙번호' },
+  { key: 'taxInvoiceNumber', label: '세금계산서번호' },
+  { key: 'approvalStatus', label: '승인상태' },
   { key: 'status', label: '상태' }
 ]
 

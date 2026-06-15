@@ -11,6 +11,7 @@ function registerDbHandlers() {
   ipcMain.handle('db:save-sql-snapshot', () => localDb.saveSqlSnapshot())
   ipcMain.handle('db:get-validation-issues', () => localDb.getValidationIssues())
   ipcMain.handle('db:get-closing-queue', () => localDb.getClosingQueue())
+  ipcMain.handle('db:get-upload-templates', () => localDb.getUploadTemplates())
 }
 
 function createWindow() {
