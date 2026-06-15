@@ -1,18 +1,51 @@
 const { Pool } = require('pg')
+const fs = require('fs')
+const path = require('path')
 
 let pool
+let envLoaded = false
+
+function loadLocalEnv() {
+  if (envLoaded) return
+  envLoaded = true
+
+  const envPath = path.join(__dirname, '..', 'db', 'local.env')
+  if (!fs.existsSync(envPath)) return
+
+  const lines = fs.readFileSync(envPath, 'utf8').split(/\r?\n/)
+  lines.forEach((line) => {
+    const trimmed = line.trim()
+    if (!trimmed || trimmed.startsWith('#')) return
+
+    const separatorIndex = trimmed.indexOf('=')
+    if (separatorIndex < 1) return
+
+    const key = trimmed.slice(0, separatorIndex).trim()
+    const value = trimmed.slice(separatorIndex + 1).trim().replace(/^["']|["']$/g, '')
+
+    if (!process.env[key]) {
+      process.env[key] = value
+    }
+  })
+}
+
+function getDbConfig() {
+  loadLocalEnv()
+
+  return {
+    host: process.env.PGHOST || 'localhost',
+    port: Number(process.env.PGPORT || 5432),
+    user: process.env.PGUSER || 'postgres',
+    password: String(process.env.PGPASSWORD ?? ''),
+    database: process.env.PGDATABASE || 'vue_electron',
+    max: 5,
+    connectionTimeoutMillis: 3000
+  }
+}
 
 function getPool() {
   if (!pool) {
-    pool = new Pool({
-      host: process.env.PGHOST || 'localhost',
-      port: Number(process.env.PGPORT || 5432),
-      user: process.env.PGUSER || 'postgres',
-      password: process.env.PGPASSWORD || undefined,
-      database: process.env.PGDATABASE || 'vue_electron',
-      max: 5,
-      connectionTimeoutMillis: 3000
-    })
+    pool = new Pool(getDbConfig())
   }
 
   return pool
@@ -66,8 +99,16 @@ function severityTone(severity) {
 }
 
 async function runQuery(sql, params = []) {
-  const result = await getPool().query(sql, params)
-  return result.rows
+  try {
+    const result = await getPool().query(sql, params)
+    return result.rows
+  } catch (error) {
+    if (error.message?.includes('SASL') || error.message?.includes('password authentication failed')) {
+      throw new Error('PostgreSQL 인증에 실패했습니다. db/local.env 파일의 PGUSER, PGPASSWORD, PGDATABASE 값을 확인해주세요.')
+    }
+
+    throw error
+  }
 }
 
 async function getRawRows() {

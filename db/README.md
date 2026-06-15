@@ -11,6 +11,22 @@ user: postgres
 database: vue_electron
 ```
 
+Create a local connection file before running the Electron app:
+
+```powershell
+Copy-Item db/local.env.example db/local.env
+```
+
+Then edit `db/local.env` and put the PostgreSQL password you set during installation:
+
+```text
+PGHOST=localhost
+PGPORT=5432
+PGUSER=postgres
+PGPASSWORD=your-password
+PGDATABASE=vue_electron
+```
+
 Run setup after PostgreSQL is installed:
 
 ```powershell
@@ -33,6 +49,8 @@ $env:PGDATABASE="vue_electron"
 $env:PGPASSWORD="your-password"
 npm run db:setup
 ```
+
+The Electron app reads `db/local.env` automatically. The file is ignored by git so the local database password is not committed.
 
 Included tables:
 
