@@ -10,5 +10,8 @@ contextBridge.exposeInMainWorld('electronAPI', {
     getValidationIssues: () => ipcRenderer.invoke('db:get-validation-issues'),
     getClosingQueue: () => ipcRenderer.invoke('db:get-closing-queue'),
     getUploadTemplates: () => ipcRenderer.invoke('db:get-upload-templates')
+  },
+  files: {
+    saveFile: (payload) => ipcRenderer.invoke('file:save', payload)
   }
 })

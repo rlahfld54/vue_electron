@@ -7,7 +7,7 @@ import PageLayout from '../components/common/PageLayout.vue'
 import SectionCard from '../components/common/SectionCard.vue'
 import StatusBadge from '../components/common/StatusBadge.vue'
 import { excelUploadTemplates } from '../data/excelUploadTemplates'
-import { exportAllUploadTemplatesToXlsx, exportUploadTemplateToXlsx } from '../utils/spreadsheetExport'
+import { exportAllUploadTemplatesToXlsx, exportRowsToXlsx, exportUploadTemplateToXlsx } from '../utils/spreadsheetExport'
 
 const selectedType = ref('전체')
 const activeIssueType = ref('')
@@ -143,16 +143,35 @@ function loadDraft() {
   notify('임시 검증본 불러오기', `${new Date(draft.savedAt).toLocaleString('ko-KR')}에 저장한 검증 상태를 불러왔습니다.`)
 }
 
+async function exportIssueData(title, rows) {
+  if (!rows.length) {
+    notify('다운로드할 데이터 없음', '현재 조건에 해당하는 검증 행이 없습니다.')
+    return
+  }
+
+  try {
+    const result = await exportRowsToXlsx({
+      title,
+      sheetName: '검증 상세',
+      columns: issueColumns,
+      rows
+    })
+    notify('엑셀 다운로드 완료', `${result.fileName} 파일을 저장했습니다.`)
+  } catch (error) {
+    notify('엑셀 다운로드 실패', error.message || '엑셀 파일 생성 중 오류가 발생했습니다.')
+  }
+}
+
 function downloadRejectedRows() {
-  notify('반려 데이터 다운로드', `SQL 저장 전 반려해야 할 ${blockerCount.value}개 행을 엑셀로 내려받을 수 있도록 준비했습니다.`)
+  exportIssueData('반려_데이터_다운로드', detailRows.value.filter((row) => row.action === '반려'))
 }
 
 function downloadEditedRows() {
-  notify('수정본 다운로드', '담당자 재확인 항목을 포함한 수정 검토본을 내려받을 수 있도록 준비했습니다.')
+  exportIssueData('검증_수정본_다운로드', detailRows.value)
 }
 
 function downloadIssueRows() {
-  notify('항목별 엑셀 다운로드', `${activeIssueType.value} 항목 ${counts.value[activeIssueType.value] || 0}건을 엑셀로 내려받을 수 있도록 준비했습니다.`)
+  exportIssueData(`${activeIssueType.value}_검증항목`, detailRows.value.filter((row) => row.type === activeIssueType.value))
 }
 
 function revalidateIssueRows() {

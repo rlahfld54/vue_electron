@@ -1,4 +1,5 @@
-const { app, BrowserWindow, ipcMain } = require('electron')
+const { app, BrowserWindow, ipcMain, dialog } = require('electron')
+const fs = require('fs')
 const path = require('path')
 const localDb = require('./localDb.cjs')
 
@@ -12,6 +13,22 @@ function registerDbHandlers() {
   ipcMain.handle('db:get-validation-issues', () => localDb.getValidationIssues())
   ipcMain.handle('db:get-closing-queue', () => localDb.getClosingQueue())
   ipcMain.handle('db:get-upload-templates', () => localDb.getUploadTemplates())
+  ipcMain.handle('file:save', async (_event, { fileName, bytes, filters }) => {
+    const result = await dialog.showSaveDialog({
+      defaultPath: fileName,
+      filters: filters || [
+        { name: 'Excel Workbook', extensions: ['xlsx'] },
+        { name: 'All Files', extensions: ['*'] }
+      ]
+    })
+
+    if (result.canceled || !result.filePath) {
+      return { canceled: true }
+    }
+
+    fs.writeFileSync(result.filePath, Buffer.from(bytes))
+    return { canceled: false, filePath: result.filePath }
+  })
 }
 
 function createWindow() {

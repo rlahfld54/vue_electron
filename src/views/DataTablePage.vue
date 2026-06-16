@@ -6,6 +6,7 @@ import BaseTable from '../components/common/BaseTable.vue'
 import PageLayout from '../components/common/PageLayout.vue'
 import SectionCard from '../components/common/SectionCard.vue'
 import StatusBadge from '../components/common/StatusBadge.vue'
+import { exportRowsToXlsx } from '../utils/spreadsheetExport'
 
 const query = ref('')
 const statusFilter = ref('전체')
@@ -121,8 +122,18 @@ async function saveSqlSnapshot() {
   }
 }
 
-function exportRows() {
-  notify('XLSX 내보내기 준비', `현재 필터 결과 ${filteredRows.value.length}개 행을 XLSX로 내보낼 수 있도록 준비했습니다.`)
+async function exportRows() {
+  try {
+    const result = await exportRowsToXlsx({
+      title: '원본_데이터_조회',
+      sheetName: '원본 데이터',
+      columns,
+      rows: filteredRows.value
+    })
+    notify('XLSX 내보내기 완료', `${result.fileName} 파일을 저장했습니다.`)
+  } catch (error) {
+    notify('XLSX 내보내기 실패', error.message || '엑셀 파일 생성 중 오류가 발생했습니다.')
+  }
 }
 
 onMounted(loadRows)

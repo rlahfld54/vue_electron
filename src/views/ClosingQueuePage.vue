@@ -6,6 +6,7 @@ import BaseTable from '../components/common/BaseTable.vue'
 import PageLayout from '../components/common/PageLayout.vue'
 import SectionCard from '../components/common/SectionCard.vue'
 import StatusBadge from '../components/common/StatusBadge.vue'
+import { exportRowsToXlsx } from '../utils/spreadsheetExport'
 
 const currentStep = ref(1)
 const selectedMail = ref(null)
@@ -179,8 +180,39 @@ function openFileLocation(company) {
   notify('파일 위치 확인', `${company.name} 첨부 파일 폴더를 여는 동작을 준비했습니다. Electron 연결 시 탐색기로 열 수 있습니다.`)
 }
 
-function saveAttachment(company, fileType) {
-  notify('첨부 저장 완료', `${company.name} ${fileType} 파일을 저장 완료 상태로 표시했습니다.`)
+async function saveAttachment(company, fileType) {
+  if (fileType !== 'XLSX') {
+    notify('PDF 저장 준비 필요', `${company.name} PDF는 PDF 생성 모듈 연결 후 저장할 수 있습니다.`)
+    return
+  }
+
+  try {
+    const result = await exportRowsToXlsx({
+      title: company.xlsx.replace(/\.xlsx$/i, ''),
+      sheetName: '마감 요청',
+      columns: [
+        { key: 'name', label: '업체명' },
+        { key: 'owner', label: '담당자' },
+        { key: 'due', label: '마감일' },
+        { key: 'type', label: '확인 유형' },
+        { key: 'amount', label: '마감 금액' },
+        { key: 'channel', label: '발송 채널' },
+        { key: 'email', label: '수신 이메일' }
+      ],
+      rows: [{
+        name: company.name,
+        owner: company.owner,
+        due: company.due,
+        type: company.type,
+        amount: company.amount,
+        channel: company.channel,
+        email: company.email
+      }]
+    })
+    notify('첨부 저장 완료', `${result.fileName} 파일을 저장했습니다.`)
+  } catch (error) {
+    notify('첨부 저장 실패', error.message || '엑셀 첨부 생성 중 오류가 발생했습니다.')
+  }
 }
 
 function recheckPreview() {

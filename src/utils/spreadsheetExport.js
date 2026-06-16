@@ -17,6 +17,27 @@ function getColumnWidth(column, rows, index) {
 
 async function saveWorkbook(workbook, suggestedName) {
   const buffer = await workbook.xlsx.writeBuffer()
+  const bytes = new Uint8Array(buffer)
+
+  if (window.electronAPI?.files?.saveFile) {
+    const result = await window.electronAPI.files.saveFile({
+      fileName: suggestedName,
+      bytes: Array.from(bytes),
+      filters: [
+        { name: 'Excel Workbook', extensions: ['xlsx'] },
+        { name: 'All Files', extensions: ['*'] }
+      ]
+    })
+
+    if (result?.canceled) {
+      const error = new Error('다운로드가 취소되었습니다.')
+      error.name = 'AbortError'
+      throw error
+    }
+
+    return { fileName: suggestedName, saveMode: 'electron-dialog', filePath: result?.filePath }
+  }
+
   const blob = new Blob([buffer], {
     type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
   })
@@ -31,6 +52,60 @@ async function saveWorkbook(workbook, suggestedName) {
   window.setTimeout(() => URL.revokeObjectURL(url), 1000)
 
   return { fileName: suggestedName, saveMode: 'browser-download' }
+}
+
+export async function exportRowsToXlsx({
+  columns,
+  rows,
+  title,
+  sheetName = 'Data'
+}) {
+  const displayTitle = title?.trim() || '엑셀_내보내기'
+  const suggestedName = `${sanitizeFileName(displayTitle)}.xlsx`
+  const ExcelModule = await import('exceljs')
+  const ExcelJS = ExcelModule.default ?? ExcelModule
+  const workbook = new ExcelJS.Workbook()
+  const worksheet = workbook.addWorksheet(sheetName.slice(0, 31))
+
+  workbook.creator = 'Excel Desktop App'
+  workbook.created = new Date()
+  workbook.modified = new Date()
+
+  worksheet.columns = columns.map((column, index) => ({
+    header: column.label,
+    key: column.key,
+    width: getColumnWidth(column.label, rows.map((row) => columns.map((item) => row[item.key])), index)
+  }))
+  worksheet.spliceRows(1, 0, [displayTitle])
+  worksheet.mergeCells(1, 1, 1, columns.length)
+  worksheet.getRow(1).height = 26
+  worksheet.getCell(1, 1).font = { bold: true, size: 14, color: { argb: 'FF064E3B' } }
+  worksheet.getCell(1, 1).alignment = { vertical: 'middle' }
+  worksheet.addRows(rows)
+
+  worksheet.getRow(2).font = { bold: true, color: { argb: 'FFFFFFFF' } }
+  worksheet.getRow(2).fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF059669' } }
+  worksheet.getRow(2).alignment = { vertical: 'middle', horizontal: 'center' }
+  worksheet.views = [{ state: 'frozen', ySplit: 2 }]
+  worksheet.autoFilter = {
+    from: { row: 2, column: 1 },
+    to: { row: 2, column: columns.length }
+  }
+
+  worksheet.eachRow((row, rowNumber) => {
+    if (rowNumber < 2) return
+    row.eachCell((cell) => {
+      cell.alignment = { vertical: 'middle', wrapText: true }
+      cell.border = {
+        top: { style: 'thin', color: { argb: 'FFE5E7EB' } },
+        left: { style: 'thin', color: { argb: 'FFE5E7EB' } },
+        bottom: { style: 'thin', color: { argb: 'FFE5E7EB' } },
+        right: { style: 'thin', color: { argb: 'FFE5E7EB' } }
+      }
+    })
+  })
+
+  return saveWorkbook(workbook, suggestedName)
 }
 
 function styleTemplateWorksheet(worksheet, accent = 'FF0F766E') {
