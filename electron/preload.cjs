@@ -12,6 +12,13 @@ contextBridge.exposeInMainWorld('electronAPI', {
     getUploadTemplates: () => ipcRenderer.invoke('db:get-upload-templates')
   },
   files: {
-    saveFile: (payload) => ipcRenderer.invoke('file:save', payload)
+    saveFile: (payload) => ipcRenderer.invoke('file:save', payload),
+    selectSpreadsheet: () => ipcRenderer.invoke('file:select-spreadsheet'),
+    getClosingAttachmentDir: () => ipcRenderer.invoke('file:get-closing-attachment-dir'),
+    openPath: (targetPath) => ipcRenderer.invoke('file:open-path', targetPath),
+    showItemInFolder: (targetPath) => ipcRenderer.invoke('file:show-item-in-folder', targetPath)
+  },
+  pdf: {
+    saveClosingRequest: (company) => ipcRenderer.invoke('pdf:save-closing-request', company)
   }
 })

@@ -20,6 +20,7 @@ const actionMessage = ref('')
 const mailDraftTitle = ref('')
 const mailDraftBody = ref('')
 const isLoading = ref(false)
+const attachmentDirectory = ref('')
 
 const checks = [
   ['Gmail 주소', 'gmail.com 주소 형식 확인'],
@@ -123,6 +124,9 @@ async function loadClosingQueue() {
   try {
     companies.value = await db.getClosingQueue()
     selectedCompanyIds.value = companies.value.map((company) => company.id)
+    if (window.electronAPI?.files?.getClosingAttachmentDir) {
+      attachmentDirectory.value = await window.electronAPI.files.getClosingAttachmentDir()
+    }
     queueNotice.value = `PostgreSQL에서 발송 큐 ${companies.value.length}개 업체를 불러왔습니다.`
   } catch (error) {
     companies.value = []
@@ -171,18 +175,42 @@ function editGlobalMailTemplate() {
   openMailModal(selectedCompanies.value[0] || companies.value[0])
 }
 
-function generateAttachments() {
+async function generateAttachments() {
   currentStep.value = 3
-  notify('첨부 파일 생성 완료', `선택 업체 ${selectedCompanyIds.value.length}개의 XLSX/PDF 첨부를 생성 완료 상태로 표시했습니다.`)
+  try {
+    if (window.electronAPI?.files?.getClosingAttachmentDir) {
+      attachmentDirectory.value = await window.electronAPI.files.getClosingAttachmentDir()
+    }
+    notify('첨부 폴더 준비 완료', `선택 업체 ${selectedCompanyIds.value.length}개의 첨부 저장 폴더를 준비했습니다. ${attachmentDirectory.value}`)
+  } catch (error) {
+    notify('첨부 폴더 준비 실패', error.message || '첨부 폴더 생성 중 오류가 발생했습니다.')
+  }
 }
 
-function openFileLocation(company) {
-  notify('파일 위치 확인', `${company.name} 첨부 파일 폴더를 여는 동작을 준비했습니다. Electron 연결 시 탐색기로 열 수 있습니다.`)
+async function openFileLocation(company) {
+  try {
+    const directory = attachmentDirectory.value || await window.electronAPI.files.getClosingAttachmentDir()
+    const result = await window.electronAPI.files.openPath(directory)
+
+    if (!result?.success) {
+      notify('폴더 열기 실패', result?.error || '첨부 폴더를 열 수 없습니다.')
+      return
+    }
+
+    notify('첨부 폴더 열기', `${company.name} 첨부 폴더를 열었습니다. ${directory}`)
+  } catch (error) {
+    notify('폴더 열기 실패', error.message || '첨부 폴더를 여는 중 오류가 발생했습니다.')
+  }
 }
 
 async function saveAttachment(company, fileType) {
+  if (fileType === 'PDF') {
+    await savePdf(company)
+    return
+  }
+
   if (fileType !== 'XLSX') {
-    notify('PDF 저장 준비 필요', `${company.name} PDF는 PDF 생성 모듈 연결 후 저장할 수 있습니다.`)
+    notify('첨부 저장 실패', `${fileType} 파일 형식은 아직 지원하지 않습니다.`)
     return
   }
 
@@ -209,6 +237,9 @@ async function saveAttachment(company, fileType) {
         email: company.email
       }]
     })
+    if (result.filePath && window.electronAPI?.files?.showItemInFolder) {
+      await window.electronAPI.files.showItemInFolder(result.filePath)
+    }
     notify('첨부 저장 완료', `${result.fileName} 파일을 저장했습니다.`)
   } catch (error) {
     notify('첨부 저장 실패', error.message || '엑셀 첨부 생성 중 오류가 발생했습니다.')
@@ -225,8 +256,31 @@ function createDrafts() {
   notify('초안 생성 완료', '선택 업체의 메일 초안과 카톡 복사 문구를 첨부 포함 상태로 준비했습니다.')
 }
 
+async function savePdf(company) {
+  if (!window.electronAPI?.pdf?.saveClosingRequest) {
+    notify('PDF 저장 실패', 'Electron 앱에서 실행해야 PDF를 생성할 수 있습니다.')
+    return
+  }
+
+  try {
+    const result = await window.electronAPI.pdf.saveClosingRequest(company)
+
+    if (result?.canceled) {
+      notify('PDF 저장 취소', 'PDF 저장이 취소되었습니다.')
+      return
+    }
+
+    if (result.filePath && window.electronAPI?.files?.showItemInFolder) {
+      await window.electronAPI.files.showItemInFolder(result.filePath)
+    }
+    notify('PDF 저장 완료', `${company.pdf} 파일을 저장했습니다.`)
+  } catch (error) {
+    notify('PDF 저장 실패', error.message || 'PDF 생성 중 오류가 발생했습니다.')
+  }
+}
+
 function downloadPdf() {
-  notify('PDF 다운로드 준비', `${selectedCompany.value.pdf} 파일을 내려받을 수 있도록 준비했습니다.`)
+  savePdf(selectedCompany.value)
 }
 
 function resetMailDraft() {

@@ -83,6 +83,15 @@ async function addFile() {
   }
 
   try {
+    if (window.electronAPI?.files?.selectSpreadsheet) {
+      const selected = await window.electronAPI.files.selectSpreadsheet()
+
+      if (selected?.canceled) {
+        notify('파일 선택 취소', '추가할 파일 선택이 취소되었습니다.')
+        return
+      }
+    }
+
     rows.value = await db.addSampleRow()
     notify('파일 추가 완료', 'PostgreSQL에 추가 업로드 샘플 행을 저장하고 다시 조회했습니다.')
   } catch (error) {

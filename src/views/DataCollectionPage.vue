@@ -114,8 +114,25 @@ async function downloadAllTemplates() {
   }
 }
 
-function uploadFile() {
-  notify('파일 업로드 대기', 'Electron 파일 선택 연결 전이라 샘플 파일을 업로드한 상태로 표시했습니다. 바로 샘플 검증을 실행할 수 있습니다.')
+async function uploadFile() {
+  if (!window.electronAPI?.files?.selectSpreadsheet) {
+    notify('Electron 파일 선택 필요', 'Electron 앱에서 실행해야 엑셀 파일을 선택할 수 있습니다.')
+    return
+  }
+
+  try {
+    const result = await window.electronAPI.files.selectSpreadsheet()
+
+    if (result?.canceled) {
+      notify('파일 선택 취소', '업로드할 파일 선택이 취소되었습니다.')
+      return
+    }
+
+    statusText.value = `${result.fileName} 파일을 선택했습니다. 크기 ${(result.size / 1024).toFixed(1)} KB · 경로 ${result.filePath}`
+    await loadSample()
+  } catch (error) {
+    notify('파일 선택 실패', error.message || '파일 선택 중 오류가 발생했습니다.')
+  }
 }
 
 function saveDraft() {
