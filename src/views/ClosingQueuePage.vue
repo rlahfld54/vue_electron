@@ -104,6 +104,14 @@ function getDb() {
   return window.electronAPI?.db
 }
 
+function getFileApi() {
+  return window.electronAPI?.files
+}
+
+function getPdfApi() {
+  return window.electronAPI?.pdf
+}
+
 function notify(title, message) {
   actionTitle.value = title
   actionMessage.value = message
@@ -124,8 +132,9 @@ async function loadClosingQueue() {
   try {
     companies.value = await db.getClosingQueue()
     selectedCompanyIds.value = companies.value.map((company) => company.id)
-    if (window.electronAPI?.files?.getClosingAttachmentDir) {
-      attachmentDirectory.value = await window.electronAPI.files.getClosingAttachmentDir()
+    const fileApi = getFileApi()
+    if (fileApi?.getClosingAttachmentDir) {
+      attachmentDirectory.value = await fileApi.getClosingAttachmentDir()
     }
     queueNotice.value = `PostgreSQL에서 발송 큐 ${companies.value.length}개 업체를 불러왔습니다.`
   } catch (error) {
@@ -178,8 +187,15 @@ function editGlobalMailTemplate() {
 async function generateAttachments() {
   currentStep.value = 3
   try {
-    if (window.electronAPI?.files?.getClosingAttachmentDir) {
-      attachmentDirectory.value = await window.electronAPI.files.getClosingAttachmentDir()
+    const fileApi = getFileApi()
+
+    if (!fileApi?.getClosingAttachmentDir) {
+      notify('Electron 파일 API 필요', '앱을 완전히 종료한 뒤 npm run electron:dev로 다시 실행해주세요.')
+      return
+    }
+
+    if (fileApi?.getClosingAttachmentDir) {
+      attachmentDirectory.value = await fileApi.getClosingAttachmentDir()
     }
     notify('첨부 폴더 준비 완료', `선택 업체 ${selectedCompanyIds.value.length}개의 첨부 저장 폴더를 준비했습니다. ${attachmentDirectory.value}`)
   } catch (error) {
@@ -189,8 +205,15 @@ async function generateAttachments() {
 
 async function openFileLocation(company) {
   try {
-    const directory = attachmentDirectory.value || await window.electronAPI.files.getClosingAttachmentDir()
-    const result = await window.electronAPI.files.openPath(directory)
+    const fileApi = getFileApi()
+
+    if (!fileApi?.getClosingAttachmentDir || !fileApi?.openPath) {
+      notify('Electron 파일 API 필요', '앱을 완전히 종료한 뒤 npm run electron:dev로 다시 실행해주세요.')
+      return
+    }
+
+    const directory = attachmentDirectory.value || await fileApi.getClosingAttachmentDir()
+    const result = await fileApi.openPath(directory)
 
     if (!result?.success) {
       notify('폴더 열기 실패', result?.error || '첨부 폴더를 열 수 없습니다.')
@@ -237,8 +260,9 @@ async function saveAttachment(company, fileType) {
         email: company.email
       }]
     })
-    if (result.filePath && window.electronAPI?.files?.showItemInFolder) {
-      await window.electronAPI.files.showItemInFolder(result.filePath)
+    const fileApi = getFileApi()
+    if (result.filePath && fileApi?.showItemInFolder) {
+      await fileApi.showItemInFolder(result.filePath)
     }
     notify('첨부 저장 완료', `${result.fileName} 파일을 저장했습니다.`)
   } catch (error) {
@@ -257,21 +281,24 @@ function createDrafts() {
 }
 
 async function savePdf(company) {
-  if (!window.electronAPI?.pdf?.saveClosingRequest) {
-    notify('PDF 저장 실패', 'Electron 앱에서 실행해야 PDF를 생성할 수 있습니다.')
+  const pdfApi = getPdfApi()
+
+  if (!pdfApi?.saveClosingRequest) {
+    notify('Electron PDF API 필요', '앱을 완전히 종료한 뒤 npm run electron:dev로 다시 실행해주세요.')
     return
   }
 
   try {
-    const result = await window.electronAPI.pdf.saveClosingRequest(company)
+    const result = await pdfApi.saveClosingRequest(company)
 
     if (result?.canceled) {
       notify('PDF 저장 취소', 'PDF 저장이 취소되었습니다.')
       return
     }
 
-    if (result.filePath && window.electronAPI?.files?.showItemInFolder) {
-      await window.electronAPI.files.showItemInFolder(result.filePath)
+    const fileApi = getFileApi()
+    if (result.filePath && fileApi?.showItemInFolder) {
+      await fileApi.showItemInFolder(result.filePath)
     }
     notify('PDF 저장 완료', `${company.pdf} 파일을 저장했습니다.`)
   } catch (error) {
